@@ -178,6 +178,47 @@
       <section id="results" class="results" aria-live="polite"></section>
     </section>
 
+    <!-- 取り込む -->
+    <section class="panel" data-panel="import" hidden>
+      <h2 class="panel-title">レシピを取り込む</h2>
+      <p class="panel-lead">料理サイトのページ、メモの文章、料理本や手書きメモの写真から、材料と作り方を読み取って保存します。</p>
+
+      <form id="form-import" class="import-card" novalidate>
+        <div class="import-modes" role="radiogroup" aria-label="取り込み方法">
+          <label class="seg"><input type="radio" name="importMode" value="url" checked><span>URL</span></label>
+          <label class="seg"><input type="radio" name="importMode" value="text"><span>文章</span></label>
+          <label class="seg"><input type="radio" name="importMode" value="image"><span>写真</span></label>
+        </div>
+
+        <div class="field" data-import-mode="url">
+          <label for="import-url">レシピのページのURL</label>
+          <input id="import-url" name="url" type="url" inputmode="url" placeholder="https://" autocomplete="off">
+          <p class="hint">ブラウザのアドレス欄や、アプリの「共有 → リンクをコピー」で取得したURLを貼り付けてください。</p>
+        </div>
+
+        <div class="field" data-import-mode="text" hidden>
+          <label for="import-text">レシピの文章</label>
+          <textarea id="import-text" name="text" rows="9" maxlength="12000" placeholder="材料と作り方を含めて貼り付けてください。&#10;例：&#10;鶏むね肉 1枚&#10;片栗粉 大さじ1&#10;1. 鶏肉をそぎ切りにする…"></textarea>
+          <p class="hint">メモ帳やメッセージに残したレシピ、ページからコピーした文章に使えます。</p>
+        </div>
+
+        <div class="field" data-import-mode="image" hidden>
+          <span class="field-label">レシピの写真（3枚まで）</span>
+          <div id="import-photos" class="import-photos"></div>
+          <label class="btn btn-outline photo-pick">
+            <input id="import-image" type="file" accept="image/*" multiple class="sr-only">
+            <span>写真を選ぶ</span>
+          </label>
+          <p class="hint">料理本のページ、レシピカード、手書きメモ、画面のスクリーンショットなど。文字がはっきり写るように撮ってください。</p>
+        </div>
+
+        <p class="form-msg" role="alert"></p>
+        <button type="submit" class="btn btn-primary btn-block btn-big">取り込む</button>
+      </form>
+
+      <p class="import-note">取り込んだレシピは「履歴」に保存され、お気に入りや料理の写真も登録できます。取り込み元のページへのリンクも残ります。サイトや本のレシピは、ご自身で楽しむ範囲でご利用ください。</p>
+    </section>
+
     <!-- 履歴 -->
     <section class="panel" data-panel="history" hidden>
       <h2 class="panel-title">これまでのレシピ</h2>
@@ -237,6 +278,10 @@
     <button type="button" data-tab="make" aria-current="page">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h16v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5v-5Z"/><path d="M2 10h20"/><path d="M9 7c0-1.2 1.2-1.6 1.2-3M14 7c0-1.2 1.2-1.6 1.2-3"/></svg>
       <span>つくる</span>
+    </button>
+    <button type="button" data-tab="import">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11"/><path d="M7.5 9.5 12 14l4.5-4.5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+      <span>取り込む</span>
     </button>
     <button type="button" data-tab="history">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>

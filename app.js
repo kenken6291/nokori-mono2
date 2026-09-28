@@ -1,4 +1,5 @@
-/* のこりものレシピ — app.js（SPA / vanilla JS） */
+/* のこりものレシピ — app.js（SPA / vanilla JS）
+   機能: 会員認証 / 残り物からレシピ提案 / 外部レシピの取り込み（URL・文章・写真） / 履歴・お気に入り */
 'use strict';
 
 /* ===== 設定：GASのウェブアプリURL（…/exec）に置き換えてください ===== */
@@ -18,6 +19,12 @@ const TIME_OPTIONS = [[0, '指定なし'], [10, '10分'], [20, '20分'], [30, '3
 const GENRES = ['おまかせ', '和食', '洋食', '中華', '韓国風', 'エスニック', '汁物・スープ', 'おつまみ', 'お弁当向き'];
 const MAGNET_COLORS = ['#F2C84B', '#8CC3EC', '#86C997', '#F5A97F', '#C7A3E6', '#F29C94'];
 const MAGNET_TILT = [-3, -1.5, 1, 2.5, -2, 0.5, 3];
+const MAX_IMPORT_IMAGES = 3;
+const IMPORT_LOADING = {
+  url: ['ページを読み込んでいます…', '材料と作り方を探しています…', 'レシピを整理しています…'],
+  text: ['文章を読んでいます…', 'レシピを整理しています…'],
+  image: ['写真の文字を読んでいます…', '材料と作り方を探しています…', 'レシピを整理しています…'],
+};
 const LOADING_LINES = ['冷蔵庫の中身を確認しています…', '食材の組み合わせを考えています…', '調味料と相談しています…', '作り方をまとめています…'];
 
 const ICON_EYE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>';
@@ -39,6 +46,8 @@ const state = {
   loaded: { history: false, favorites: false },
   currentTab: 'make',
   openRecipeId: null,
+  importImages: [],       // 取り込み用に縮小した写真（dataURL）
+  pendingImport: '',      // ?import= で渡されたURLや文章
 };
 
 /* ========== 小道具 ========== */
@@ -199,6 +208,8 @@ function clearSession() {
   state.favorites = [];
   state.loaded = { history: false, favorites: false };
   state.currentTab = 'make';
+  state.importImages = [];
+  renderImportPhotos();
 }
 
 function handleAuthExpired(message) {
@@ -249,6 +260,7 @@ function enterApp() {
   }
   showView('main');
   switchTab(state.currentTab || 'make');
+  applyPendingImport();
 }
 
 function switchTab(tab) {
@@ -690,7 +702,7 @@ function listRow(item) {
       <span class="row-thumb">${thumb}</span>
       <span class="row-text">
         <span class="row-title">${esc(r.title || item.title)}</span>
-        <span class="row-sub"><span>${esc(formatDate(item.createdAt))}</span><span>${r.cookingTimeMinutes}分</span></span>
+        <span class="row-sub"><span>${esc(formatDate(item.createdAt))}</span><span>${r.cookingTimeMinutes}分</span>${isImported(item) ? '<span>取り込み</span>' : ''}</span>
       </span>
     </button>
     ${favButton(item)}
@@ -763,6 +775,7 @@ function renderDialog(item) {
   const r = item.recipe;
   const src = item.imageData || item.imageUrl;
   const servings = r.servings || (item.input && item.input.servings) || '';
+  const imported = isImported(item);
   const ingItem = (x, showTag) => `<li>
       <span class="ing-name">${esc(x.name)}${showTag && !x.fromFridge ? '<em class="tag-buy">買い足し</em>' : ''}</span>
       <span class="leader" aria-hidden="true"></span>
@@ -792,11 +805,13 @@ function renderDialog(item) {
       ${servings ? `<span class="pill">${esc(servings)}人分</span>` : ''}
       <span class="pill">${esc(r.difficulty)}</span>
       ${r.genre ? `<span class="pill pill-mint">${esc(r.genre)}</span>` : ''}
+      ${imported ? '<span class="pill pill-sky">取り込み</span>' : ''}
     </div>
+    ${sourceHtml(item)}
 
     <section class="sec">
       <h3>材料${servings ? `<small>${esc(servings)}人分</small>` : ''}</h3>
-      <ul class="ing-list">${r.ingredients.map((x) => ingItem(x, true)).join('')}</ul>
+      <ul class="ing-list">${r.ingredients.map((x) => ingItem(x, !imported)).join('')}</ul>
       ${r.seasonings.length ? `<h4>調味料</h4><ul class="ing-list">${r.seasonings.map((x) => ingItem(x, false)).join('')}</ul>` : ''}
     </section>
 
@@ -812,7 +827,7 @@ function renderDialog(item) {
       <ul class="subs">${r.substitutions.map((s) => `<li><strong>${esc(s.from)}</strong>の代わりに：${esc(s.to)}</li>`).join('')}</ul>
     </section>` : ''}
 
-    <p class="sheet-date">${esc(formatDate(item.createdAt))} に提案</p>
+    <p class="sheet-date">${esc(formatDate(item.createdAt))} に${imported ? '取り込み' : '提案'}</p>
     <div class="sheet-actions">
       <button type="button" class="btn btn-outline" data-copy="${esc(item.id)}">テキストでコピー</button>
       <button type="button" class="btn btn-danger-text" data-delete="${esc(item.id)}">このレシピを削除</button>
@@ -830,6 +845,8 @@ function recipeText(item) {
   lines.push('', '■作り方');
   r.steps.forEach((s, i) => lines.push(`${i + 1}. ${s}`));
   if (r.tips) lines.push('', '■コツ', r.tips);
+  const src = item.source || {};
+  if (src.type === 'url' && src.url) lines.push('', `出典：${src.siteName ? src.siteName + ' ' : ''}${src.url}`);
   return lines.join('\n');
 }
 
@@ -850,6 +867,129 @@ async function copyRecipe(id) {
     ta.remove();
   }
   toast('レシピをコピーしました');
+}
+
+/* ========== 外部レシピの取り込み ========== */
+
+function isImported(item) {
+  return !!(item && item.source && item.source.type && item.source.type !== 'ai');
+}
+
+function sourceHtml(item) {
+  const src = item.source || {};
+  if (src.type === 'url' && /^https?:\/\//i.test(src.url || '')) {
+    return `<p class="source-line"><span>取り込み元</span>`
+      + `<a href="${esc(src.url)}" target="_blank" rel="noopener noreferrer">${esc(src.siteName || src.url)}</a></p>`;
+  }
+  if (src.type === 'text') return '<p class="source-line">貼り付けた文章から取り込み</p>';
+  if (src.type === 'image') return '<p class="source-line">写真から取り込み</p>';
+  return '';
+}
+
+function setImportMode(mode) {
+  const radio = $(`#form-import input[name="importMode"][value="${mode}"]`);
+  if (radio) radio.checked = true;
+  $$('[data-import-mode]').forEach((el) => { el.hidden = el.dataset.importMode !== mode; });
+  formMsg($('#form-import'), '');
+}
+
+function renderImportPhotos() {
+  const box = $('#import-photos');
+  if (!box) return;
+  box.innerHTML = state.importImages.map((src, i) => `<div class="photo-thumb">
+      <img src="${src}" alt="${i + 1}枚目の写真">
+      <button type="button" data-remove-photo="${i}" aria-label="${i + 1}枚目の写真を外す">×</button>
+    </div>`).join('');
+}
+
+async function addImportPhotos(files) {
+  for (const file of Array.from(files || [])) {
+    if (state.importImages.length >= MAX_IMPORT_IMAGES) {
+      toast(`写真は${MAX_IMPORT_IMAGES}枚までです`);
+      break;
+    }
+    try {
+      // 文字を読み取れるよう、料理写真より大きめ・高画質で縮小
+      state.importImages.push(await compressImage(file, 1600, 0.86));
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+  renderImportPhotos();
+}
+
+function bindImport() {
+  const f = $('#form-import');
+  f.addEventListener('change', (e) => {
+    if (e.target.name === 'importMode') setImportMode(e.target.value);
+  });
+  $('#import-image').addEventListener('change', async (e) => {
+    await addImportPhotos(e.target.files);
+    e.target.value = '';
+  });
+
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = $('[type="submit"]', f);
+    const mode = f.importMode.value;
+    const payload = { mode };
+
+    if (mode === 'url') {
+      payload.url = f.url.value.trim();
+      if (!/^https?:\/\/\S+$/i.test(payload.url)) return formMsg(f, 'http:// または https:// で始まるURLを貼り付けてください');
+    } else if (mode === 'text') {
+      payload.text = f.text.value.trim();
+      if (payload.text.length < 20) return formMsg(f, '材料や作り方を含めて、レシピの文章を貼り付けてください');
+    } else {
+      if (!state.importImages.length) return formMsg(f, '写真を選んでください');
+      payload.images = state.importImages;
+    }
+
+    formMsg(f, '');
+    setBusy(btn, true);
+    const stop = showLoading(IMPORT_LOADING[mode] || LOADING_LINES);
+    try {
+      const d = await api('importRecipe', payload);
+      cacheRecipe(d.recipe);
+      if (state.loaded.history) state.history.unshift(d.recipe.id);
+      f.url.value = '';
+      f.text.value = '';
+      state.importImages = [];
+      renderImportPhotos();
+      openRecipe(d.recipe.id);
+      toast('レシピを取り込みました');
+    } catch (err) {
+      if (err.code !== 'AUTH') formMsg(f, err.message);
+    } finally {
+      stop();
+      setBusy(btn, false);
+    }
+  });
+}
+
+/* 他のアプリやブックマークから ?import=URL（または文章）で開かれたときの受け取り */
+function readSharedImport() {
+  const q = new URLSearchParams(location.search);
+  const value = (q.get('import') || q.get('url') || q.get('text') || '').trim();
+  if (!value) return;
+  state.pendingImport = value;
+  history.replaceState(null, '', location.pathname + location.hash);
+}
+
+function applyPendingImport() {
+  if (!state.pendingImport || !state.user || state.user.mustChangePassword) return;
+  const value = state.pendingImport;
+  state.pendingImport = '';
+  switchTab('import');
+  const m = value.match(/https?:\/\/[^\s<>"']+/);
+  if (m && value.replace(m[0], '').trim().length < 80) {
+    setImportMode('url');
+    $('#import-url').value = m[0];
+  } else {
+    setImportMode('text');
+    $('#import-text').value = value;
+  }
+  toast('内容を確かめて「取り込む」を押してください');
 }
 
 /* ========== 写真 ========== */
@@ -936,6 +1076,11 @@ function bindGlobalEvents() {
     if (d.close !== undefined) return closeDialog();
     if (d.copy) return copyRecipe(d.copy);
     if (d.delete) return deleteRecipe(d.delete);
+    if (d.removePhoto !== undefined) {
+      state.importImages.splice(Number(d.removePhoto), 1);
+      renderImportPhotos();
+      return;
+    }
     if (d.remove) return removeIngredient(d.remove);
     if (d.quick) {
       if (state.ingredients.includes(d.quick)) removeIngredient(d.quick);
@@ -979,7 +1124,9 @@ function init() {
   setupPasswordToggles();
   bindAuthForms();
   buildMakeForm();
+  bindImport();
   bindGlobalEvents();
+  readSharedImport();
 
   if (loadSession()) {
     enterApp();
@@ -993,6 +1140,7 @@ function init() {
   } else {
     showView('auth');
     setAuthTab('login');
+    if (state.pendingImport) formMsg($('#form-login'), 'ログインすると、共有されたレシピを取り込めます', 'success');
   }
 }
 

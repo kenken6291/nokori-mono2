@@ -120,6 +120,7 @@ svg { flex: none; }
   padding: 20px 16px calc(var(--tabbar-h) + 32px + env(safe-area-inset-bottom, 0px));
 }
 .panel-title { font-size: 1.5rem; margin: 6px 4px 18px; }
+.panel-lead { color: var(--muted); margin: -8px 4px 18px; font-size: 0.95rem; }
 
 /* ---------- 認証 ---------- */
 
@@ -148,7 +149,7 @@ svg { flex: none; }
 .form { display: grid; gap: 14px; }
 .field { display: grid; gap: 6px; }
 .field > label, .cond legend { font-weight: 700; font-size: 0.95rem; }
-input[type="text"], input[type="email"], input[type="password"], select, textarea {
+input[type="text"], input[type="email"], input[type="password"], input[type="url"], select, textarea {
   width: 100%; min-height: 50px;
   padding: 11px 14px;
   font-size: 17px; /* iOSの自動ズーム防止 */
@@ -355,6 +356,36 @@ input:focus, select:focus, textarea:focus { border-color: var(--mint-deep); outl
 .fav[aria-pressed="true"] { color: #C99A12; }
 .fav[aria-pressed="true"] svg { fill: var(--butter); stroke: #B08510; }
 
+/* ---------- 取り込み ---------- */
+
+.import-card {
+  background: var(--surface); border: 1.5px solid var(--line); border-radius: 20px;
+  padding: 18px; display: grid; gap: 16px;
+}
+.import-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.import-modes .seg span { min-height: 50px; font-size: 1rem; }
+.field-label { font-weight: 700; font-size: 0.95rem; }
+.import-photos { display: flex; flex-wrap: wrap; gap: 10px; }
+.import-photos:empty { display: none; }
+.photo-thumb {
+  position: relative; width: 104px; height: 104px; border-radius: 12px; overflow: hidden;
+  border: 1.5px solid var(--line); background: var(--paper);
+}
+.photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.photo-thumb button {
+  position: absolute; top: 4px; right: 4px; width: 32px; height: 32px; border-radius: 50%;
+  border: 0; background: rgba(29, 42, 49, .75); color: #fff; font-weight: 900; line-height: 1;
+}
+.photo-pick { justify-self: start; }
+.import-note { font-size: 0.85rem; color: var(--muted); margin: 14px 4px 0; line-height: 1.7; }
+
+.pill-sky { background: #DDEEFB; border-color: #B3D5F0; color: #1F4A6B; }
+.source-line {
+  margin-top: 12px; font-size: 0.9rem; color: var(--muted);
+  display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline;
+}
+.source-line a { color: var(--mint-deep); font-weight: 700; word-break: break-all; text-underline-offset: 3px; }
+
 /* ---------- 履歴・お気に入りの一覧 ---------- */
 
 .recipe-list { display: grid; gap: 10px; }
@@ -404,12 +435,12 @@ input:focus, select:focus, textarea:focus { border-color: var(--mint-deep); outl
   background: var(--surface);
   border-top: 1px solid var(--line);
   padding-bottom: env(safe-area-inset-bottom, 0px);
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(5, 1fr);
 }
 .tabbar button {
   height: var(--tabbar-h); border: 0; background: transparent;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-  font-size: 0.78rem; font-weight: 700; color: var(--muted);
+  font-size: 0.74rem; font-weight: 700; color: var(--muted); white-space: nowrap;
   position: relative;
 }
 .tabbar svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -418,7 +449,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--mint-deep); outl
   content: ""; position: absolute; top: 0; left: 30%; right: 30%; height: 3px; border-radius: 0 0 3px 3px; background: var(--tomato);
 }
 @media (min-width: 760px) {
-  .tabbar { left: 50%; right: auto; transform: translateX(-50%); width: 560px; bottom: 16px; border: 1px solid var(--line); border-radius: 20px; padding-bottom: 0; box-shadow: 0 10px 30px rgba(0, 0, 0, .1); }
+  .tabbar { left: 50%; right: auto; transform: translateX(-50%); width: 620px; bottom: 16px; border: 1px solid var(--line); border-radius: 20px; padding-bottom: 0; box-shadow: 0 10px 30px rgba(0, 0, 0, .1); }
 }
 
 /* ---------- レシピ詳細 ---------- */
@@ -524,6 +555,7 @@ input:focus, select:focus, textarea:focus { border-color: var(--mint-deep); outl
 
 @media (max-width: 380px) {
   body { font-size: 16px; }
+  .tabbar button { font-size: 0.68rem; }
   .fridge { padding-right: 48px; }
   .fridge-handle { right: 14px; width: 12px; }
   .cond-row { grid-template-columns: 1fr; }
