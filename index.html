@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>のこりものレシピ｜冷蔵庫の残り物からレシピ提案</title>
+  <meta name="description" content="冷蔵庫に余っている食材を入れるだけで、AIが家にある調味料で作れるレシピを考えます。">
+  <meta name="theme-color" content="#CFE8DC">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='88'>🥕</text></svg>">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-name">のこりもの<small>レシピ</small></span>
+      </div>
+      <div class="topbar-user" id="topbar-user" hidden>
+        <span id="topbar-nickname"></span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== ログイン・登録・再発行 ===== -->
+  <main id="view-auth" class="view" hidden>
+    <section class="auth">
+      <h1 class="auth-title">冷蔵庫の残り物で、<br>今日なに作る？</h1>
+      <p class="auth-lead">余っている食材を入れるだけで、家にある調味料で作れるレシピをAIが考えます。</p>
+
+      <div class="auth-card">
+        <div class="auth-tabs" role="tablist" aria-label="ログインと登録">
+          <button type="button" role="tab" data-auth-tab="login" aria-selected="true">ログイン</button>
+          <button type="button" role="tab" data-auth-tab="register" aria-selected="false">新規登録</button>
+          <button type="button" role="tab" data-auth-tab="reset" aria-selected="false">パスワード再発行</button>
+        </div>
+
+        <form id="form-login" class="form" data-auth-panel="login" novalidate>
+          <div class="field">
+            <label for="login-email">メールアドレス</label>
+            <input id="login-email" name="email" type="email" inputmode="email" autocomplete="email" required>
+          </div>
+          <div class="field">
+            <label for="login-password">パスワード</label>
+            <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+          </div>
+          <label class="check">
+            <input type="checkbox" name="remember" checked>
+            <span>ログインしたままにする</span>
+          </label>
+          <p class="form-msg" role="alert"></p>
+          <button class="btn btn-primary btn-block" type="submit">ログイン</button>
+        </form>
+
+        <form id="form-register" class="form" data-auth-panel="register" novalidate hidden>
+          <div class="field">
+            <label for="reg-email">メールアドレス</label>
+            <input id="reg-email" name="email" type="email" inputmode="email" autocomplete="email" required>
+          </div>
+          <div class="field">
+            <label for="reg-nickname">ニックネーム</label>
+            <input id="reg-nickname" name="nickname" type="text" maxlength="20" autocomplete="nickname" required>
+          </div>
+          <p class="hint">入力したメールアドレスに仮パスワードが届きます。最初のログインでご自身のパスワードに変更します。</p>
+          <p class="form-msg" role="alert"></p>
+          <button class="btn btn-primary btn-block" type="submit">仮パスワードを受け取る</button>
+        </form>
+
+        <form id="form-reset" class="form" data-auth-panel="reset" novalidate hidden>
+          <div class="field">
+            <label for="reset-email">登録したメールアドレス</label>
+            <input id="reset-email" name="email" type="email" inputmode="email" autocomplete="email" required>
+          </div>
+          <p class="hint">新しい仮パスワードをメールで送ります。これまでのパスワードは使えなくなります。</p>
+          <p class="form-msg" role="alert"></p>
+          <button class="btn btn-primary btn-block" type="submit">仮パスワードを再発行する</button>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===== 初回ログイン時のパスワード変更 ===== -->
+  <main id="view-change" class="view" hidden>
+    <section class="auth">
+      <div class="auth-card">
+        <h2 class="card-title">パスワードを決めてください</h2>
+        <p class="hint">仮パスワードのままでは使えません。ご自身で決めたパスワードに変更してください。</p>
+        <form id="form-change-forced" class="form" novalidate>
+          <div class="field">
+            <label for="fc-current">仮パスワード</label>
+            <input id="fc-current" name="currentPassword" type="password" autocomplete="current-password" required>
+          </div>
+          <div class="field">
+            <label for="fc-new">新しいパスワード</label>
+            <input id="fc-new" name="newPassword" type="password" autocomplete="new-password" required>
+            <p class="hint">英字と数字を両方含む8文字以上（半角）</p>
+          </div>
+          <div class="field">
+            <label for="fc-confirm">新しいパスワード（確認のためもう一度）</label>
+            <input id="fc-confirm" name="confirmPassword" type="password" autocomplete="new-password" required>
+          </div>
+          <p class="form-msg" role="alert"></p>
+          <button class="btn btn-primary btn-block" type="submit">パスワードを変更して始める</button>
+        </form>
+        <button type="button" class="btn btn-text btn-block" data-action="logout">ログアウト</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- ===== メイン ===== -->
+  <main id="view-main" class="view" hidden>
+
+    <!-- つくる -->
+    <section class="panel" data-panel="make">
+      <div class="fridge">
+        <div class="fridge-handle" aria-hidden="true"></div>
+        <h1 class="fridge-title">冷蔵庫にあるもの</h1>
+        <p class="fridge-hint">余っている食材を入れてください。「、」で区切ると一度に入れられます。</p>
+
+        <ul id="magnets" class="magnets" aria-label="入力した食材" aria-live="polite"></ul>
+
+        <div class="ing-entry">
+          <label for="ing-input" class="sr-only">食材の名前</label>
+          <input id="ing-input" type="text" placeholder="例：キャベツ、ちくわ" autocomplete="off" enterkeyhint="done" maxlength="60">
+          <button id="ing-add" type="button" class="btn btn-ink">追加</button>
+        </div>
+
+        <div class="quick">
+          <p class="quick-label">よく余るもの</p>
+          <div id="quick-list" class="quick-list"></div>
+        </div>
+      </div>
+
+      <form id="form-make" class="conditions" novalidate>
+        <fieldset class="cond">
+          <legend>家にある調味料</legend>
+          <div id="seasoning-list" class="toggle-list"></div>
+          <div class="cond-actions">
+            <button type="button" class="btn-link" data-season="basic">基本の調味料だけ</button>
+            <button type="button" class="btn-link" data-season="all">すべて選ぶ</button>
+            <button type="button" class="btn-link" data-season="none">すべて外す</button>
+          </div>
+        </fieldset>
+
+        <fieldset class="cond">
+          <legend>調理時間</legend>
+          <div id="time-list" class="segmented"></div>
+        </fieldset>
+
+        <div class="cond-row">
+          <div class="field">
+            <label for="genre">ジャンル</label>
+            <select id="genre" name="genre"></select>
+          </div>
+          <div class="field">
+            <label for="servings">人数</label>
+            <select id="servings" name="servings"></select>
+          </div>
+        </div>
+
+        <label class="check">
+          <input type="checkbox" id="allow-shopping" name="allowShopping">
+          <span>足りない食材を少し買い足してもいい</span>
+        </label>
+
+        <div class="field">
+          <label for="note">ほかの希望（なくても大丈夫）</label>
+          <textarea id="note" name="note" rows="2" maxlength="200" placeholder="例：辛くない味にしたい、洗い物を少なく"></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-primary btn-block btn-big">レシピを考えてもらう</button>
+      </form>
+
+      <section id="results" class="results" aria-live="polite"></section>
+    </section>
+
+    <!-- 履歴 -->
+    <section class="panel" data-panel="history" hidden>
+      <h2 class="panel-title">これまでのレシピ</h2>
+      <div id="history-list" class="recipe-list"></div>
+    </section>
+
+    <!-- お気に入り -->
+    <section class="panel" data-panel="favorites" hidden>
+      <h2 class="panel-title">お気に入り</h2>
+      <div id="favorites-list" class="recipe-list"></div>
+    </section>
+
+    <!-- 設定 -->
+    <section class="panel" data-panel="settings" hidden>
+      <h2 class="panel-title">設定</h2>
+
+      <div class="settings-block">
+        <h3>アカウント</h3>
+        <p class="setting-line">メールアドレス<br><strong id="set-email"></strong></p>
+        <form id="form-nickname" class="form" novalidate>
+          <div class="field">
+            <label for="set-nickname">ニックネーム</label>
+            <input id="set-nickname" name="nickname" type="text" maxlength="20" required>
+          </div>
+          <p class="form-msg" role="alert"></p>
+          <button class="btn btn-outline" type="submit">ニックネームを保存</button>
+        </form>
+      </div>
+
+      <div class="settings-block">
+        <h3>パスワードの変更</h3>
+        <form id="form-change" class="form" novalidate>
+          <div class="field">
+            <label for="sc-current">今のパスワード</label>
+            <input id="sc-current" name="currentPassword" type="password" autocomplete="current-password" required>
+          </div>
+          <div class="field">
+            <label for="sc-new">新しいパスワード</label>
+            <input id="sc-new" name="newPassword" type="password" autocomplete="new-password" required>
+            <p class="hint">英字と数字を両方含む8文字以上（半角）</p>
+          </div>
+          <div class="field">
+            <label for="sc-confirm">新しいパスワード（確認のためもう一度）</label>
+            <input id="sc-confirm" name="confirmPassword" type="password" autocomplete="new-password" required>
+          </div>
+          <p class="form-msg" role="alert"></p>
+          <button class="btn btn-outline" type="submit">パスワードを変更する</button>
+        </form>
+      </div>
+
+      <button type="button" class="btn btn-text btn-block" data-action="logout">ログアウト</button>
+    </section>
+  </main>
+
+  <!-- ===== 下部メニュー ===== -->
+  <nav class="tabbar" id="tabbar" aria-label="メニュー" hidden>
+    <button type="button" data-tab="make" aria-current="page">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h16v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5v-5Z"/><path d="M2 10h20"/><path d="M9 7c0-1.2 1.2-1.6 1.2-3M14 7c0-1.2 1.2-1.6 1.2-3"/></svg>
+      <span>つくる</span>
+    </button>
+    <button type="button" data-tab="history">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+      <span>履歴</span>
+    </button>
+    <button type="button" data-tab="favorites">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5Z"/></svg>
+      <span>お気に入り</span>
+    </button>
+    <button type="button" data-tab="settings">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+      <span>設定</span>
+    </button>
+  </nav>
+
+  <dialog id="recipe-dialog" class="recipe-dialog" aria-labelledby="dlg-title"></dialog>
+
+  <div id="loading" class="loading" hidden>
+    <div class="loading-box">
+      <div class="pan" aria-hidden="true"></div>
+      <p id="loading-text">考えています…</p>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
