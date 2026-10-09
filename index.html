@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>のこりものレシピ｜冷蔵庫の残り物からレシピ提案</title>
-  <meta name="description" content="冷蔵庫に余っている食材を入れるだけで、AIが家にある調味料で作れるレシピを考えます。">
+  <meta name="description" content="冷蔵庫に余っている食材を入れるだけで、AIが家にある調味料で作れるレシピを考えます。家族のアレルギーに配慮した1週間の献立と買い物リストも作れます。">
   <meta name="theme-color" content="#CFE8DC">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='88'>🥕</text></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=2.1.0">
 </head>
 <body>
 
@@ -80,6 +80,7 @@
           <button class="btn btn-primary btn-block" type="submit">仮パスワードを再発行する</button>
         </form>
       </div>
+      <p class="app-version" data-app-version></p>
     </section>
   </main>
 
@@ -119,7 +120,7 @@
       <div class="fridge">
         <div class="fridge-handle" aria-hidden="true"></div>
         <h1 class="fridge-title">冷蔵庫にあるもの</h1>
-        <p class="fridge-hint">余っている食材を入れてください。「、」で区切ると一度に入れられます。</p>
+        <p class="fridge-hint">余っている食材を入れてください。「、」で区切ると一度に入れられます。入れた食材は保存され、献立と買い物リストにも使われます。</p>
 
         <ul id="magnets" class="magnets" aria-label="入力した食材" aria-live="polite"></ul>
 
@@ -132,6 +133,9 @@
         <div class="quick">
           <p class="quick-label">よく余るもの</p>
           <div id="quick-list" class="quick-list"></div>
+        </div>
+        <div class="fridge-tools">
+          <button type="button" class="btn-link" data-fridge-clear>冷蔵庫の食材をすべて外す</button>
         </div>
       </div>
 
@@ -167,6 +171,12 @@
           <span>足りない食材を少し買い足してもいい</span>
         </label>
 
+        <label class="check" id="avoid-family-wrap" hidden>
+          <input type="checkbox" id="avoid-family" name="useFamilyAvoid" checked>
+          <span>家族のアレルギー・食べられないものを使わない</span>
+        </label>
+        <p class="hint" id="avoid-family-list" hidden></p>
+
         <div class="field">
           <label for="note">ほかの希望（なくても大丈夫）</label>
           <textarea id="note" name="note" rows="2" maxlength="200" placeholder="例：辛くない味にしたい、洗い物を少なく"></textarea>
@@ -188,6 +198,7 @@
           <label class="seg"><input type="radio" name="importMode" value="url" checked><span>URL</span></label>
           <label class="seg"><input type="radio" name="importMode" value="text"><span>文章</span></label>
           <label class="seg"><input type="radio" name="importMode" value="image"><span>写真</span></label>
+          <label class="seg"><input type="radio" name="importMode" value="bulk"><span>まとめて</span></label>
         </div>
 
         <div class="field" data-import-mode="url">
@@ -212,23 +223,70 @@
           <p class="hint">料理本のページ、レシピカード、手書きメモ、画面のスクリーンショットなど。文字がはっきり写るように撮ってください。</p>
         </div>
 
+        <div class="bulk" data-import-mode="bulk" hidden>
+          <div class="field">
+            <label for="bulk-text">URLの一覧、またはレシピをまとめた文章</label>
+            <textarea id="bulk-text" name="bulkText" rows="8" maxlength="20000" placeholder="URLは1行に1つずつ（30件まで）&#10;https://…&#10;https://…&#10;&#10;URLを含まない文章を貼ると、その中のレシピを最大10品まで取り出します。"></textarea>
+            <p class="hint">ブックマークやメモアプリからまとめてコピーできます。URLの前後の文字（ページのタイトルなど）は無視します。</p>
+          </div>
+          <div class="bulk-files">
+            <label class="btn btn-outline">
+              <input id="bulk-file" type="file" accept=".txt,.html,.htm,.csv,.md,text/plain,text/html,text/csv" class="sr-only">
+              <span>ファイルからURLを読み込む</span>
+            </label>
+            <p class="hint">ブラウザから書き出したブックマーク（.html）や、URLを並べたテキスト・CSVファイルに対応しています。</p>
+          </div>
+          <div class="field">
+            <span class="field-label">レシピの写真（1枚＝1つのレシピ、10枚まで）</span>
+            <div id="bulk-photos" class="import-photos"></div>
+            <label class="btn btn-outline photo-pick">
+              <input id="bulk-image" type="file" accept="image/*" multiple class="sr-only">
+              <span>写真を選ぶ</span>
+            </label>
+          </div>
+          <label class="check">
+            <input type="checkbox" name="skipDuplicate" checked>
+            <span>取り込み済みのURLは飛ばす</span>
+          </label>
+          <p id="bulk-count" class="bulk-count"></p>
+        </div>
+
         <p class="form-msg" role="alert"></p>
         <button type="submit" class="btn btn-primary btn-block btn-big">取り込む</button>
       </form>
 
-      <p class="import-note">取り込んだレシピは「履歴」に保存され、お気に入りや料理の写真も登録できます。取り込み元のページへのリンクも残ります。サイトや本のレシピは、ご自身で楽しむ範囲でご利用ください。</p>
+      <section id="bulk-progress" class="bulk-progress" aria-live="polite" hidden></section>
+
+      <p class="import-note">取り込んだレシピは「レシピ」に保存され、お気に入りや料理の写真も登録できます。取り込み元のページへのリンクも残ります。サイトや本のレシピは、ご自身で楽しむ範囲でご利用ください。</p>
     </section>
 
-    <!-- 履歴 -->
-    <section class="panel" data-panel="history" hidden>
-      <h2 class="panel-title">これまでのレシピ</h2>
-      <div id="history-list" class="recipe-list"></div>
+    <!-- 献立 -->
+    <section class="panel" data-panel="menu" hidden>
+      <h2 class="panel-title">献立</h2>
+      <div class="subtabs" role="tablist" aria-label="献立のメニュー">
+        <button type="button" role="tab" data-menu-view="plan" aria-selected="true">献立表</button>
+        <button type="button" role="tab" data-menu-view="shopping" aria-selected="false">買い物リスト</button>
+        <button type="button" role="tab" data-menu-view="family" aria-selected="false">家族・アレルギー</button>
+      </div>
+      <div id="menu-plan" data-menu-pane="plan"></div>
+      <div id="menu-shopping" data-menu-pane="shopping" hidden></div>
+      <div id="menu-family" data-menu-pane="family" hidden></div>
     </section>
 
-    <!-- お気に入り -->
-    <section class="panel" data-panel="favorites" hidden>
-      <h2 class="panel-title">お気に入り</h2>
-      <div id="favorites-list" class="recipe-list"></div>
+    <!-- レシピ（履歴・お気に入り） -->
+    <section class="panel" data-panel="recipes" hidden>
+      <h2 class="panel-title">レシピ</h2>
+      <div class="filter-bar" role="radiogroup" aria-label="表示するレシピ">
+        <label class="seg"><input type="radio" name="recipeFilter" value="all" checked><span>すべて</span></label>
+        <label class="seg"><input type="radio" name="recipeFilter" value="fav"><span>お気に入り</span></label>
+        <label class="seg"><input type="radio" name="recipeFilter" value="imported"><span>取り込み</span></label>
+        <label class="seg"><input type="radio" name="recipeFilter" value="menu"><span>献立</span></label>
+      </div>
+      <div class="field recipe-search">
+        <label for="recipe-search" class="sr-only">レシピを探す</label>
+        <input id="recipe-search" type="search" placeholder="料理名・食材で探す" autocomplete="off" enterkeyhint="search">
+      </div>
+      <div id="recipes-list" class="recipe-list"></div>
     </section>
 
     <!-- 設定 -->
@@ -246,6 +304,12 @@
           <p class="form-msg" role="alert"></p>
           <button class="btn btn-outline" type="submit">ニックネームを保存</button>
         </form>
+      </div>
+
+      <div class="settings-block">
+        <h3>家族・アレルギー</h3>
+        <p class="hint">献立づくりやレシピ提案で、家族のアレルギーや食べられないものを避けます。</p>
+        <button type="button" class="btn btn-outline" data-go-family>家族の設定を開く</button>
       </div>
 
       <div class="settings-block">
@@ -269,7 +333,13 @@
         </form>
       </div>
 
+      <div class="settings-block">
+        <h3>バージョン情報</h3>
+        <div id="version-info"></div>
+      </div>
+
       <button type="button" class="btn btn-text btn-block" data-action="logout">ログアウト</button>
+      <p class="app-version"><span data-app-version></span></p>
     </section>
   </main>
 
@@ -279,17 +349,17 @@
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10h16v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5v-5Z"/><path d="M2 10h20"/><path d="M9 7c0-1.2 1.2-1.6 1.2-3M14 7c0-1.2 1.2-1.6 1.2-3"/></svg>
       <span>つくる</span>
     </button>
+    <button type="button" data-tab="menu">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4M8 14h3M8 17h6"/></svg>
+      <span>献立</span>
+    </button>
     <button type="button" data-tab="import">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11"/><path d="M7.5 9.5 12 14l4.5-4.5"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
       <span>取り込む</span>
     </button>
-    <button type="button" data-tab="history">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
-      <span>履歴</span>
-    </button>
-    <button type="button" data-tab="favorites">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5Z"/></svg>
-      <span>お気に入り</span>
+    <button type="button" data-tab="recipes">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h11a3 3 0 0 1 3 3v12H8a3 3 0 0 1-3-3v-12Z"/><path d="M5 16.5a3 3 0 0 1 3-3h11"/><path d="M9 8h6"/></svg>
+      <span>レシピ</span>
     </button>
     <button type="button" data-tab="settings">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
@@ -308,6 +378,8 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-  <script src="app.js"></script>
+  <!-- config.js（GASのURLなど）→ app.js の順に読み込む。更新したら ?v= の数字を上げるとキャッシュが切り替わる -->
+  <script src="config.js?v=2.1.0"></script>
+  <script src="app.js?v=2.1.0"></script>
 </body>
 </html>
