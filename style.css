@@ -429,6 +429,22 @@ input:focus, select:focus, textarea:focus { border-color: var(--mint-deep); outl
 .setting-line strong { color: var(--ink); font-size: 1rem; word-break: break-all; }
 .settings-block .btn { justify-self: start; }
 
+/* AIモデル選択 */
+.model-list {
+  margin: 12px 0 10px; border: 1.5px solid var(--line); border-radius: 14px; overflow: hidden;
+}
+.model-item {
+  display: flex; align-items: center; gap: 12px; padding: 14px 14px; cursor: pointer;
+  border-top: 1px solid var(--line); font-size: 1rem; line-height: 1.4;
+}
+.model-item:first-child { border-top: none; }
+.model-item input { order: 2; width: 22px; height: 22px; flex: 0 0 auto; accent-color: var(--mint-deep); }
+.model-item .model-name { flex: 1; min-width: 0; font-weight: 700; }
+.model-item .model-desc { display: block; font-size: 0.8rem; font-weight: 500; color: var(--muted); }
+.model-item:has(input:checked) { background: rgba(0, 0, 0, 0.035); }
+.model-note { font-size: 0.82rem; }
+.model-last { font-size: 0.82rem; margin-top: 6px; }
+
 /* ---------- 下部メニュー ---------- */
 
 .tabbar {

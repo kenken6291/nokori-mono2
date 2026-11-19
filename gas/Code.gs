@@ -16,8 +16,8 @@
 
 const APP_NAME = 'のこりものレシピ';
 // バージョン（app.js の APP_VERSION とそろえる。設定画面で両方を表示し、違えば警告します）
-const SERVER_VERSION = '2.1.0';
-const SERVER_BUILD_DATE = '2026-10-10';
+const SERVER_VERSION = '2.2.0';
+const SERVER_BUILD_DATE = '2026-11-20';
 
 const SHEET_USERS = 'users';
 const SHEET_RECIPES = 'recipes';
@@ -49,6 +49,21 @@ const MAX_LOGIN_FAIL = 5;                      // 連続失敗でロック
 const LOCK_MS = 15 * 60 * 1000;                // ロック時間: 15分
 const DEFAULT_HASH_ITERATIONS = 1000;          // 重くしすぎるとログインが遅くなるので注意
 const DEFAULT_MODEL = 'gemini-3.8-flash';
+// 画面で選べるGeminiモデル（app.js の AI_MODELS とそろえる）
+const MODEL_OPTIONS = {
+  'auto': '自動モード（汎用の最新）',
+  'gemini-4-hydrogen': '4 Hydrogen',
+  'gemini-4-neon': '4 Neon',
+  'gemini-4-carbon': '4 Carbon',
+  'gemini-4-argon': '4 Argon',
+  'gemini-3.8-flash': '3.8 Flash',
+  'gemini-3.5-flash': '3.5 Flash'
+};
+// 自動モードで試す順番（使えないモデルは飛ばして次へ）。スクリプトプロパティ GEMINI_MODEL があれば最優先
+const AUTO_MODEL_CHAIN = ['gemini-4-hydrogen', 'gemini-3.8-flash', 'gemini-3.5-flash'];
+const BAD_MODEL_CACHE_SEC = 3600;              // 使えなかったモデルは1時間スキップ
+let REQUEST_MODEL_ = 'auto';                   // このリクエストで選ばれたモデル（doPostで設定）
+let MODEL_USED_ = '';                          // 実際に使ったモデル（応答に入れて画面に表示）
 const DEFAULT_THINKING_LEVEL = 'low';        // low / medium / high（3.8 Flash は minimal 非対応）
 const DEFAULT_HOURLY_LIMIT = 20;               // 1ユーザー1時間あたりのレシピ生成回数
 const DEFAULT_IMPORT_HOURLY_LIMIT = 60;        // 1ユーザー1時間あたりの取り込み回数（一括取り込みを含む）
@@ -113,9 +128,17 @@ function doPost(e) {
   const handler = routes[req.action];
   if (!handler) return json_({ ok: false, error: '不明な操作です: ' + req.action });
 
+  REQUEST_MODEL_ = normalizeModel_(req.aiModel);
+  MODEL_USED_ = '';
+
   try {
     const result = handler(req) || {};
     result.ok = true;
+    if (MODEL_USED_) {
+      result.modelUsed = MODEL_USED_;
+      result.modelLabel = MODEL_OPTIONS[MODEL_USED_] || MODEL_USED_;
+      result.modelFallback = REQUEST_MODEL_ !== 'auto' && REQUEST_MODEL_ !== MODEL_USED_;
+    }
     return json_(result);
   } catch (err) {
     if (err && err.userMessage) {
@@ -128,7 +151,43 @@ function doPost(e) {
 
 /** バージョン情報（ログイン不要） */
 function version_() {
-  return { app: APP_NAME, version: SERVER_VERSION, build: SERVER_BUILD_DATE };
+  return { app: APP_NAME, version: SERVER_VERSION, build: SERVER_BUILD_DATE, models: Object.keys(MODEL_OPTIONS) };
+}
+
+/* =========================================================
+ * Geminiモデルの選択
+ * ======================================================= */
+
+function normalizeModel_(m) {
+  m = String(m || 'auto').trim();
+  return Object.prototype.hasOwnProperty.call(MODEL_OPTIONS, m) ? m : 'auto';
+}
+
+/** 試す順番のモデル一覧。選んだモデル → 自動モードの順。使えないと分かっているモデルは後回し */
+function modelChain_() {
+  const auto = [];
+  const fixed = prop_('GEMINI_MODEL');
+  if (fixed) auto.push(fixed.trim());
+  AUTO_MODEL_CHAIN.concat([DEFAULT_MODEL]).forEach(function (m) { auto.push(m); });
+  const list = REQUEST_MODEL_ === 'auto' ? auto : [REQUEST_MODEL_].concat(auto);
+  const seen = {};
+  const uniq = list.filter(function (m) { if (!m || seen[m]) return false; seen[m] = true; return true; });
+  const cache = CacheService.getScriptCache();
+  const good = uniq.filter(function (m) { return !cache.get('badmodel:' + m); });
+  const bad = uniq.filter(function (m) { return cache.get('badmodel:' + m); });
+  return good.concat(bad); // 全部ダメでも最後に一応試す
+}
+
+function markBadModel_(model) {
+  try { CacheService.getScriptCache().put('badmodel:' + model, '1', BAD_MODEL_CACHE_SEC); } catch (e) { /* noop */ }
+}
+
+/** モデルが存在しない・このAPIで使えない・権限がない、を示すエラーか */
+function isModelUnavailable_(code, msg) {
+  if (code === 404) return true;
+  if (code === 403 && !/API key/i.test(msg)) return true;
+  if (code === 400 && /not found|not supported|unsupported model|is not available|unknown model|invalid model|does not exist|interactions api/i.test(msg)) return true;
+  return false;
 }
 
 /* =========================================================
@@ -718,21 +777,39 @@ function checkRateLimit_(uid, opts) {
 
 /**
  * Gemini API 呼び出し（構造化JSON出力）
+ * 画面で選んだモデルを使い、使えないとき（未公開・廃止・権限なし・混雑が続く）は
+ * 自動モードの順番（4 Hydrogen → 3.8 Flash → 3.5 Flash）で切り替える。
  * 3.8 Flash 以降は temperature 等を送らず、thinkingLevel で速度と品質を調整する。
- * 400エラーのときは thinkingConfig → responseSchema の順に外して再試行する
- * （古いモデルや別モデルに切り替えても動くように）。
+ * 400エラーのときは thinkingConfig → responseSchema の順に外して再試行する。
  */
 function callGemini_(input, schema) {
-  const baseParts = typeof input === 'string' ? [{ text: input }] : input;
   const key = prop_('GEMINI_API_KEY');
   if (!key) fail_('GEMINI_API_KEY が未設定です（管理者向け）');
-  const model = prop_('GEMINI_MODEL') || DEFAULT_MODEL;
+  const chain = modelChain_();
+  let lastError = '';
+  for (let i = 0; i < chain.length; i++) {
+    const r = callGeminiModel_(chain[i], key, input, schema, i < chain.length - 1);
+    if (r.ok) { MODEL_USED_ = chain[i]; return r.data; }
+    if (r.unavailable) markBadModel_(chain[i]);
+    lastError = r.error || lastError;
+  }
+  fail_(lastError || 'AIの呼び出しに失敗しました');
+}
+
+/**
+ * 1つのモデルで呼び出す。
+ * 戻り値: { ok:true, data } / { ok:false, unavailable:true } / { ok:false, error }
+ * 内容の問題（ブロック等）や APIキーの誤りは、モデルを変えても直らないので fail_ で止める。
+ */
+function callGeminiModel_(model, key, input, schema, hasNext) {
+  const baseParts = typeof input === 'string' ? [{ text: input }] : input;
   const thinkingLevel = (prop_('GEMINI_THINKING_LEVEL') || DEFAULT_THINKING_LEVEL).toLowerCase();
   const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(model) + ':generateContent';
 
   let useThinking = thinkingLevel !== 'none';
   let useSchema = true;
   let lastError = '';
+  let busyCount = 0;
 
   for (let attempt = 0; attempt < 5; attempt++) {
     const parts = useSchema ? baseParts : baseParts.concat([{
@@ -742,13 +819,19 @@ function callGemini_(input, schema) {
     if (useSchema) generationConfig.responseSchema = schema;
     if (useThinking) generationConfig.thinkingConfig = { thinkingLevel: thinkingLevel };
 
-    const res = UrlFetchApp.fetch(url, {
-      method: 'post',
-      contentType: 'application/json',
-      headers: { 'x-goog-api-key': key },
-      payload: JSON.stringify({ contents: [{ role: 'user', parts: parts }], generationConfig: generationConfig }),
-      muteHttpExceptions: true
-    });
+    let res;
+    try {
+      res = UrlFetchApp.fetch(url, {
+        method: 'post',
+        contentType: 'application/json',
+        headers: { 'x-goog-api-key': key },
+        payload: JSON.stringify({ contents: [{ role: 'user', parts: parts }], generationConfig: generationConfig }),
+        muteHttpExceptions: true
+      });
+    } catch (e) {
+      lastError = 'AIに接続できませんでした。少し待ってからお試しください';
+      continue;
+    }
     const code = res.getResponseCode();
     const body = res.getContentText();
 
@@ -765,7 +848,7 @@ function callGemini_(input, schema) {
         .map(function (p) { return p.text; })
         .join('');
       try {
-        return JSON.parse(stripFence_(out));
+        return { ok: true, data: JSON.parse(stripFence_(out)) };
       } catch (e) {
         lastError = 'AIの応答を読み取れませんでした。もう一度お試しください';
         continue;
@@ -776,18 +859,27 @@ function callGemini_(input, schema) {
     try { apiMsg = JSON.parse(body).error.message || ''; } catch (e) { /* noop */ }
     console.warn('Gemini error', code, model, apiMsg);
 
-    if (code === 400 && !/API key/i.test(apiMsg)) {
+    if (/API key/i.test(apiMsg) && (code === 400 || code === 401 || code === 403)) {
+      fail_('GEMINI_API_KEY が正しくありません（管理者向け）');
+    }
+    if (isModelUnavailable_(code, apiMsg)) {
+      return { ok: false, unavailable: true, error: 'モデル ' + model + ' は使えませんでした' };
+    }
+    if (code === 400) {
       if (useThinking) { useThinking = false; continue; }
       if (useSchema) { useSchema = false; continue; }
     }
     if (code === 429 || code >= 500) {
       lastError = 'AIが混み合っています。少し待ってからお試しください';
+      busyCount++;
+      // 次のモデルがあるなら、長く待たずに切り替える
+      if (hasNext && busyCount >= 2) return { ok: false, error: lastError };
       Utilities.sleep(1500 * (attempt + 1));
       continue;
     }
-    fail_('AIの呼び出しに失敗しました（' + code + '）' + (apiMsg ? ': ' + apiMsg.slice(0, 150) : ''));
+    return { ok: false, error: 'AIの呼び出しに失敗しました（' + code + '）' + (apiMsg ? ': ' + apiMsg.slice(0, 150) : '') };
   }
-  fail_(lastError || 'AIの呼び出しに失敗しました');
+  return { ok: false, error: lastError || 'AIの呼び出しに失敗しました' };
 }
 
 /* =========================================================
@@ -2163,11 +2255,23 @@ function ensureSheet_(ss, name, headers) {
 
 /** Gemini APIキーと応答形式の動作確認 */
 function testGemini() {
+  REQUEST_MODEL_ = 'auto';
   const out = callGemini_(buildRecipePrompt_({
     ingredients: ['卵', 'トマト'], seasonings: ['塩', '砂糖', 'サラダ油'], maxMinutes: 10,
     genre: 'おまかせ', servings: 1, allowShopping: false, count: 1, note: ''
   }), RECIPE_SCHEMA);
+  Logger.log('使ったモデル: ' + MODEL_USED_);
   Logger.log(JSON.stringify(out, null, 2));
+}
+
+/** 画面で選べる各モデルが、このAPIキーで使えるか確認する（エディタで実行 → ログを見る） */
+function testModels() {
+  const key = prop_('GEMINI_API_KEY');
+  Object.keys(MODEL_OPTIONS).forEach(function (m) {
+    if (m === 'auto') return;
+    const r = callGeminiModel_(m, key, '「OK」とだけ返してください', { type: 'object', properties: { reply: { type: 'string' } } }, true);
+    Logger.log((r.ok ? '✅ ' : '❌ ') + MODEL_OPTIONS[m] + '（' + m + '）' + (r.ok ? '' : ' … ' + r.error));
+  });
 }
 
 /** URL取り込みの動作確認（URLを書き換えて実行）：ページから何が読み取れたかをログに出す */

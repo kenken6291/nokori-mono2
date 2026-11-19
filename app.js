@@ -4,8 +4,8 @@
 'use strict';
 
 /* ===== バージョン（更新したらここと index.html の ?v= をそろえて上げる） ===== */
-const APP_VERSION = '2.1.0';
-const APP_BUILD_DATE = '2026-10-10';
+const APP_VERSION = '2.2.0';
+const APP_BUILD_DATE = '2026-11-20';
 
 /* ===== 設定：GASのURLなどは config.js で指定します ===== */
 const CONFIG = {
@@ -16,6 +16,20 @@ const CONFIG = {
 const SESSION_KEY = 'nokori.session.v1';
 const PREFS_KEY = 'nokori.prefs.v1';
 const FRIDGE_KEY = 'nokori.fridge.v1';
+const MODEL_KEY = 'nokori.aimodel.v1';
+const MODEL_LAST_KEY = 'nokori.aimodel.last.v1';
+
+/* ===== 選べるGeminiモデル（Code.gs の MODEL_OPTIONS とそろえる） ===== */
+const AI_MODELS = [
+  { id: 'auto', name: '自動モード（汎用の最新）', desc: '迷ったらこれ。使えるモデルを自動で選びます' },
+  { id: 'gemini-4-hydrogen', name: '4 Hydrogen', desc: '日々の暮らしをサポート（速くて手軽）' },
+  { id: 'gemini-4-neon', name: '4 Neon', desc: 'Deeper analysis' },
+  { id: 'gemini-4-carbon', name: '4 Carbon', desc: 'Code & complex work（じっくり・時間がかかります）' },
+  { id: 'gemini-4-argon', name: '4 Argon', desc: '高性能（時間がかかります）' },
+  { id: 'gemini-3.8-flash', name: '3.8 Flash', desc: 'これまでの標準モデル' },
+  { id: 'gemini-3.5-flash', name: '3.5 Flash', desc: '軽くて速い' },
+];
+const SLOW_MODELS = ['gemini-4-carbon', 'gemini-4-argon', 'gemini-4-neon'];
 const MAX_INGREDIENTS = 40;
 
 const QUICK_INGREDIENTS = ['卵', '玉ねぎ', 'にんじん', 'キャベツ', 'じゃがいも', '長ねぎ', 'もやし', 'ピーマン', '大根', 'トマト', '豆腐', '豚こま肉', '鶏むね肉', 'ひき肉', 'ベーコン', 'ツナ缶', 'ちくわ', 'ごはん'];
@@ -159,15 +173,18 @@ async function api(action, payload = {}) {
   if (!/^https:\/\/script\.google(usercontent)?\.com\/.+\/exec/.test(CONFIG.GAS_URL)) {
     throw new Error('config.js の GAS_URL が未設定か、形式が正しくありません（…/exec で終わるURLを入れてください）');
   }
+  const aiModel = getAiModel();
+  // じっくり考えるモデルは時間がかかるので、待ち時間を長めにする
+  const timeoutMs = SLOW_MODELS.includes(aiModel) ? Math.max(CONFIG.TIMEOUT_MS, 240000) : CONFIG.TIMEOUT_MS;
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), CONFIG.TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   let res;
   try {
     res = await fetch(CONFIG.GAS_URL, {
       method: 'POST',
       // text/plain にするとプリフライト（OPTIONS）が発生せず、GASでもCORSエラーになりません
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action, token: state.token || undefined, ...payload }),
+      body: JSON.stringify({ action, token: state.token || undefined, aiModel, ...payload }),
       signal: controller.signal,
     });
   } catch (e) {
@@ -194,8 +211,65 @@ async function api(action, payload = {}) {
     }
     throw err;
   }
+  if (data.modelUsed) noteModelUsed(data);
   return data;
 }
+
+/* ========== AIモデルの選択 ========== */
+
+function getAiModel() {
+  let m = 'auto';
+  try { m = localStorage.getItem(MODEL_KEY) || 'auto'; } catch (e) { /* noop */ }
+  return AI_MODELS.some((x) => x.id === m) ? m : 'auto';
+}
+
+function setAiModel(id) {
+  try { localStorage.setItem(MODEL_KEY, id); } catch (e) { /* noop */ }
+}
+
+function modelName(id) {
+  const m = AI_MODELS.find((x) => x.id === id);
+  return m ? m.name : id;
+}
+
+/** 実際に使われたモデルを記録。選んだモデルから切り替わったときはお知らせ */
+function noteModelUsed(data) {
+  try { localStorage.setItem(MODEL_LAST_KEY, data.modelUsed); } catch (e) { /* noop */ }
+  if (data.modelFallback) {
+    toast(`${modelName(getAiModel())} が使えなかったため、${data.modelLabel || modelName(data.modelUsed)} で作成しました`);
+  }
+  renderModelLast();
+}
+
+function renderModelList() {
+  const box = $('#model-list');
+  if (!box) return;
+  const cur = getAiModel();
+  box.innerHTML = AI_MODELS.map((m) => `
+    <label class="model-item">
+      <input type="radio" name="aiModel" value="${esc(m.id)}"${m.id === cur ? ' checked' : ''}>
+      <span class="model-name">${esc(m.name)}<span class="model-desc">${esc(m.desc)}</span></span>
+    </label>`).join('');
+  renderModelLast();
+}
+
+function renderModelLast() {
+  const el = $('#model-last');
+  if (!el) return;
+  let last = '';
+  try { last = localStorage.getItem(MODEL_LAST_KEY) || ''; } catch (e) { /* noop */ }
+  el.hidden = !last;
+  if (last) el.textContent = `前回使ったモデル：${modelName(last)}`;
+}
+
+document.addEventListener('change', (e) => {
+  const t = e.target;
+  if (!t || t.name !== 'aiModel') return;
+  setAiModel(t.value);
+  const slow = SLOW_MODELS.includes(t.value);
+  renderVersion();
+  toast(`AIモデルを「${modelName(t.value)}」にしました${slow ? '（回答に時間がかかることがあります）' : ''}`);
+});
 
 /* ========== セッション ========== */
 
@@ -518,6 +592,7 @@ function renderSettings() {
   $('#set-email').textContent = state.user.email;
   $('#set-nickname').value = state.user.nickname;
   $$('[data-panel="settings"] .form-msg').forEach((p) => { p.textContent = ''; p.className = 'form-msg'; });
+  renderModelList();
   renderVersion();
   loadServerVersion();
 }
@@ -539,6 +614,7 @@ function renderVersion() {
   box.innerHTML = `<dl class="ver-list">
       <dt>アプリ</dt><dd>v${esc(APP_VERSION)}（${esc(APP_BUILD_DATE)}）</dd>
       <dt>サーバー（GAS）</dt><dd>${server}</dd>
+      <dt>AIモデル</dt><dd>${esc(modelName(getAiModel()))}</dd>
       <dt>接続先</dt><dd class="ver-url">${esc(CONFIG.GAS_URL ? CONFIG.GAS_URL.replace(/^(https:\/\/[^/]+\/macros\/s\/)(.{6}).*(.{6})(\/exec)$/, '$1$2…$3$4') : '未設定')}</dd>
     </dl>
     ${mismatch ? '<p class="ver-warn">アプリとサーバーのバージョンが違います。Code.gs を新バージョンでデプロイしたか、ブラウザの再読み込みで最新の画面になっているか確認してください。</p>' : ''}`;

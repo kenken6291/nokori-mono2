@@ -132,7 +132,7 @@ Google Apps Script ウェブアプリ（gas/Code.gs）
 |---|---|---|
 | `GEMINI_API_KEY` | ○ | [Google AI Studio](https://aistudio.google.com/apikey) で発行したAPIキー |
 | `APP_URL` | 推奨 | 公開URL（例 `https://kenken6291.github.io/リポジトリ名/`）。仮パスワードのメールに載ります |
-| `GEMINI_MODEL` | | 既定は `gemini-3.8-flash`。費用と速さを優先するなら `gemini-3.5-flash-lite` |
+| `GEMINI_MODEL` | | 「自動モード」で最優先に使うモデル。未設定なら `gemini-4-hydrogen` → `gemini-3.8-flash` → `gemini-3.5-flash` の順に使えるものを使います |
 | `GEMINI_THINKING_LEVEL` | | AIの考える深さ。`low`（既定・速い） / `medium` / `high`。`none` で指定なし |
 | `HOURLY_LIMIT` | | 1ユーザー1時間あたりのレシピ生成回数。既定 `20` |
 | `IMPORT_HOURLY_LIMIT` | | 1ユーザー1時間あたりの取り込み回数（まとめて取り込みの1件も1回）。既定 `60` |
@@ -287,6 +287,7 @@ javascript:location.href='https://kenken6291.github.io/リポジトリ名/?impor
 | ログインが遅い | `HASH_ITERATIONS` を下げる（例 `500`）。既存ユーザーもそのままログインできます |
 | メールが届かない | 迷惑メールフォルダ。GASの無料アカウントは1日100通が上限 |
 | AIの呼び出しに失敗（400） | `GEMINI_API_KEY` の値、`GEMINI_MODEL` のモデル名 |
+| 選んだAIモデルが使われない | そのモデルがAPIキーで使えないと自動で切り替わります。エディタで `testModels()` を実行すると、各モデルが使えるかログで確認できます |
 | レシピ生成が遅い | `GEMINI_THINKING_LEVEL` が `low` か確認。さらに速くするなら `GEMINI_MODEL` を `gemini-3.5-flash-lite` に |
 | URLの取り込みで「外部からの読み込みを受け付けていません」 | そのサイトはGASからのアクセスを拒否しています。「文章」または「写真」から取り込んでください |
 | 取り込んだレシピの分量がずれる | 構造化データが無いページは本文から読み取るため、広告や関連レシピが混ざることがあります。材料と作り方の部分だけを「文章」で貼ると正確です |
